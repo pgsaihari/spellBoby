@@ -3,11 +3,16 @@ window.addEventListener("load", function () {
   const ctx = canvas.getContext("2d");
   canvas.width = 1300;
   canvas.height = 720;
+  const numberOfSecondaryEnemies = 1;
   let enemies = [];
+  let secondaryEnemies = [];
   let score = 0;
   let gameOver = false;
   let alphabet;
+  let gameFrame = 0;
   const fullScreenButton = document.getElementById('fullScreenButton');
+  const hitSound = new Audio('coin_sound.mp3');
+  const coinSound=new Audio("coin_sound.mp3") // Add your hit sound file here
 
   function toggleFullScreen() {
     if (!document.fullscreenElement) {
@@ -83,16 +88,30 @@ window.addEventListener("load", function () {
       this.frameY = 0;
     }
 
-    update(input, deltaTime, enemies) {
+    update(input, deltaTime, enemies, secondaryEnemies) {
+      // Collision detection with primary enemies
       enemies.forEach((enemy) => {
         const dx = (enemy.x + enemy.width / 2 - 20) - (this.x + this.width / 2);
         const dy = (enemy.y + enemy.height / 2) - (this.y + this.height / 2 + 20);
         const distance = Math.sqrt(dx * dx + dy * dy);
         if (distance < enemy.width / 3 + this.width / 3) {
           gameOver = true;
+          hitSound.play(); // Play hit sound on collision
         }
       });
 
+      // Collision detection with secondary enemies
+      secondaryEnemies.forEach((enemy) => {
+        const dx = (enemy.x + enemy.width / 2 - 20) - (this.x + this.width / 2);
+        const dy = (enemy.y + enemy.height / 2) - (this.y + this.height / 2 + 20);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < enemy.width / 3 + this.width / 3) {
+          gameOver = true;
+          hitSound.play(); // Play hit sound on collision
+        }
+      });
+
+      // Sprite animation
       if (this.frameTimer > this.frameInterval) {
         if (this.frameX >= this.maxFrame) this.frameX = 0;
         else this.frameX++;
@@ -101,6 +120,7 @@ window.addEventListener("load", function () {
         this.frameTimer += deltaTime;
       }
 
+      // Horizontal movement
       if (input.keys.indexOf("ArrowRight") > -1) {
         this.speed = 5;
       } else if (input.keys.indexOf("ArrowLeft") > -1) {
@@ -113,8 +133,10 @@ window.addEventListener("load", function () {
 
       if (this.x < 0 || this.x > this.gameWidth - this.width) {
         gameOver = true;
+        hitSound.play(); // Play hit sound on collision
       }
 
+      // Vertical movement
       if (input.keys.indexOf("ArrowUp") > -1 && this.onGround()) {
         this.vy = -32;
       }
@@ -209,6 +231,64 @@ window.addEventListener("load", function () {
     }
   }
 
+  class SecondaryEnemy {
+    constructor(gameWidth, gameHeight) {
+      this.gameWidth = gameWidth;
+      this.gameHeight = gameHeight;
+      this.image = new Image();
+      this.image.src = 'images/enemy2.png';
+      this.image.onload = () => {
+        this.loaded = true;
+      };
+      this.image.onerror = () => {
+        console.error(`Failed to load image for SecondaryEnemy.`);
+        this.loaded = false;
+      };
+
+      this.speed = Math.random() * 4 + 1;
+      this.spriteWidth = 266;
+      this.spriteHeight = 188;
+      this.width = this.spriteWidth / 2.5;
+      this.height = this.spriteHeight / 2.5;
+      this.frame = 0;
+      this.flapSpeed = Math.floor(Math.random() * 3 + 1); // Random speed for frame changes
+      this.x = Math.random() * (gameWidth - this.width);
+      this.y = Math.random() * (gameHeight - this.height);
+      this.angle = Math.random() * 2;
+      this.angleSpeed = Math.random() * 0.2;
+      this.curve = Math.random() * 7;
+      this.loaded = false;
+    }
+
+    update() {
+      this.x -= this.speed;
+      this.y += this.curve * Math.sin(this.angle);
+      this.angle += this.angleSpeed;
+
+      // Ensure enemies bounce off the canvas edges
+      if (this.x + this.width < 0) this.x = this.gameWidth;
+
+      // Animate frames
+      if (gameFrame % this.flapSpeed === 0) {
+        this.frame > 4 ? this.frame = 0 : this.frame++;
+      }
+    }
+
+    draw(context) {
+      if (this.loaded) {
+        context.drawImage(
+          this.image,
+          this.frame * this.spriteWidth, 0, this.spriteWidth, this.spriteHeight,
+          this.x, this.y, this.width, this.height
+        );
+      }
+    }
+  }
+
+  for (let i = 0; i < numberOfSecondaryEnemies; i++) {
+    secondaryEnemies.push(new SecondaryEnemy(canvas.width, canvas.height));
+  }
+
   class Alphabet {
     constructor(gameWidth, gameHeight, letter) {
       this.gameWidth = gameWidth;
@@ -218,23 +298,14 @@ window.addEventListener("load", function () {
       this.x = this.gameWidth;
       this.y = this.gameHeight / 2 - this.height; // Middle position
       this.letter = letter;
-      this.img = new Image();
-      this.img.src = `./images/${this.letter.toLowerCase()}.png`;
-      this.img.onload = () => {
-        this.loaded = true;
-      };
-      this.img.onerror = () => {
-        console.error(`Failed to load image for letter: ${this.letter}`);
-      };
       this.speed = 5;
       this.markedForDeletion = false;
-      this.loaded = false;
     }
 
     draw(context) {
-      if (this.loaded) {
-        context.drawImage(this.img, this.x, this.y, this.width, this.height);
-      }
+      context.fillStyle = 'white';
+      context.font = '60px Comic Sans MS';
+      context.fillText(this.letter, this.x, this.y + this.height);
     }
 
     update(deltaTime, player) {
@@ -270,6 +341,13 @@ window.addEventListener("load", function () {
     enemies = enemies.filter(enemy => !enemy.markedForDeletion);
   }
 
+  function handleSecondaryEnemies() {
+    secondaryEnemies.forEach(enemy => {
+      enemy.update();
+      enemy.draw(ctx);
+    });
+  }
+
   function handleAlphabet(deltaTime, player) {
     if (!alphabet || alphabet.markedForDeletion) {
       const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -297,9 +375,13 @@ window.addEventListener("load", function () {
   function restartGame() {
     player.restart();
     enemies = [];
+    secondaryEnemies = [];
     score = 0;
     gameOver = false;
     background.restart();
+    for (let i = 0; i < numberOfSecondaryEnemies; i++) {
+      secondaryEnemies.push(new SecondaryEnemy(canvas.width, canvas.height));
+    }
     animate(0);
   }
 
@@ -319,10 +401,12 @@ window.addEventListener("load", function () {
     background.draw(ctx);
     background.update();
     player.draw(ctx);
-    player.update(input, deltaTime, enemies);
+    player.update(input, deltaTime, enemies, secondaryEnemies);
     handleEnemies(deltaTime);
+    handleSecondaryEnemies();
     handleAlphabet(deltaTime, player);
     displayStatusText(ctx);
+    gameFrame++;
     if (!gameOver) requestAnimationFrame(animate);
   }
   animate(0);
